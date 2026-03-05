@@ -33,6 +33,7 @@ class GitHubClient:
                     status=f["status"],
                     additions=f.get("additions", 0),
                     deletions=f.get("deletions", 0),
+                    patch=f.get("patch"),
                 ))
             page += 1
         return files

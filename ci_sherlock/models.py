@@ -18,6 +18,7 @@ class ChangedFile(BaseModel):
     status: Literal["added", "modified", "removed", "renamed"]
     additions: int = 0
     deletions: int = 0
+    patch: str | None = None
 
 
 class Correlation(BaseModel):

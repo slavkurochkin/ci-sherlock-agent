@@ -1,5 +1,8 @@
 import logging
+import re
 from ci_sherlock.models import AnalysisResult, LLMInsight
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +56,15 @@ class LLMEngine:
     def _build_prompt(self, analysis: AnalysisResult) -> str:
         sections: list[str] = []
 
-        # Changed files
+        # Changed files with diff patches
         if analysis.failed_results:
-            changed = self._get_changed_files(analysis)
-            if changed:
-                sections.append("## Changed files in this PR\n" + "\n".join(f"- {f}" for f in changed[:20]))
+            if analysis.changed_files:
+                lines = ["## Changed files in this PR"]
+                for f in analysis.changed_files[:20]:
+                    lines.append(f"### {f.filename} ({f.status}, +{f.additions}/-{f.deletions})")
+                    if f.patch:
+                        lines.append(f"```diff\n{f.patch[:800]}\n```")
+                sections.append("\n".join(lines))
             else:
                 sections.append("## Changed files\nNo diff available (push event or missing token).")
 
@@ -106,10 +113,10 @@ class LLMEngine:
             lines.append(f"\n### {test.test_name}{retry_note}")
             lines.append(f"File: `{test.test_file}`")
             if test.error_message:
-                msg = test.error_message[:400]
+                msg = _ANSI_RE.sub("", test.error_message)[:400]
                 lines.append(f"Error: {msg}")
             if test.error_stack:
-                stack = test.error_stack[:400]
+                stack = _ANSI_RE.sub("", test.error_stack)[:400]
                 lines.append(f"Stack:\n```\n{stack}\n```")
         if len(analysis.failed_results) > 10:
             lines.append(f"\n_…{len(analysis.failed_results) - 10} more failures omitted_")
