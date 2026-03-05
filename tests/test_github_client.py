@@ -62,3 +62,24 @@ def test_find_original_strips_whitespace():
     # original passed with extra spaces — should still match
     result = find_original_in_patch(patch, "const x = 1;")
     assert result == 1
+
+
+def test_find_original_fuzzy_quote_style():
+    # LLM returns double quotes, patch has single quotes — fuzzy should match
+    patch = "@@ -1,3 +1,3 @@\n context\n+await page.click('.btn-primary');\n context\n"
+    result = find_original_in_patch(patch, 'await page.click(".btn-primary");')
+    assert result == 2
+
+
+def test_find_original_fuzzy_missing_semicolon():
+    # LLM omits trailing semicolon — fuzzy should match
+    patch = "@@ -5,3 +5,3 @@\n context\n+const x = value;\n context\n"
+    result = find_original_in_patch(patch, "const x = value")
+    assert result == 6
+
+
+def test_find_original_fuzzy_no_false_positive():
+    # Completely unrelated string — even fuzzy should return None
+    patch = "@@ -1,2 +1,2 @@\n context line\n+added line\n"
+    result = find_original_in_patch(patch, "totally different content xyz")
+    assert result is None

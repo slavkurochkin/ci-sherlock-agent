@@ -1,3 +1,4 @@
+import difflib
 import re
 import httpx
 from ci_sherlock.models import ChangedFile
@@ -9,6 +10,7 @@ def find_original_in_patch(patch: str | None, original: str | None) -> int | Non
     """
     Search a unified diff patch for `original` and return its new-file line number.
     Matches against context lines (space-prefixed) and added lines (+).
+    Tries exact match first, then fuzzy (handles quote/semicolon differences from LLM).
     Returns None if not found.
     """
     if not patch or not original:
@@ -17,17 +19,27 @@ def find_original_in_patch(patch: str | None, original: str | None) -> int | Non
     m = _HUNK_RE.search(patch)
     if not m:
         return None
+    candidates: list[tuple[str, int]] = []
     line_num = int(m.group(1))
     for raw_line in patch[m.end():].splitlines():
         if raw_line.startswith("+"):
-            if raw_line[1:].strip() == target:
-                return line_num
+            candidates.append((raw_line[1:].strip(), line_num))
             line_num += 1
         elif raw_line.startswith(" "):
-            if raw_line[1:].strip() == target:
-                return line_num
+            candidates.append((raw_line[1:].strip(), line_num))
             line_num += 1
         # "-" lines don't advance new-file counter; empty lines are hunk artefacts
+    # Exact match first
+    for content, ln in candidates:
+        if content == target:
+            return ln
+    # Fuzzy match — handles LLM quote style / semicolon differences
+    contents = [c for c, _ in candidates]
+    matches = difflib.get_close_matches(target, contents, n=1, cutoff=0.8)
+    if matches:
+        for content, ln in candidates:
+            if content == matches[0]:
+                return ln
     return None
 
 
