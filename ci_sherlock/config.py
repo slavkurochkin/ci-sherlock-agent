@@ -1,6 +1,7 @@
 import re
 import tomllib
 import os
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,6 +57,14 @@ class Config(BaseSettings):
     # Optional override — inferred from GITHUB_REF if not set
     sherlock_pr_number: int | None = None
     sherlock_slack_webhook: str | None = None
+
+    @field_validator("sherlock_pr_number", mode="before")
+    @classmethod
+    def _coerce_pr_number(cls, v: object) -> object:
+        """Treat empty string as None so SHERLOCK_PR_NUMBER='' doesn't crash."""
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
 
     @property
     def ignored_test_patterns(self) -> list[str]:
