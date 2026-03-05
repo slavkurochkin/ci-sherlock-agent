@@ -48,7 +48,7 @@ def mock_client():
 
 @pytest.fixture
 def engine(mock_client):
-    return LLMEngine(client=mock_client, model="gpt-4o")
+    return LLMEngine(client=mock_client, model="gpt-5.2")
 
 
 def test_returns_insight_on_success(engine, mock_client):
@@ -154,7 +154,7 @@ def test_model_passed_to_client(engine, mock_client):
     engine.analyze(analysis)
 
     call_args = mock_client.chat.completions.create.call_args
-    assert call_args.kwargs["model"] == "gpt-4o"
+    assert call_args.kwargs["model"] == "gpt-5.2"
 
 
 def test_fingerprint_count_appears_in_prompt(engine, mock_client):

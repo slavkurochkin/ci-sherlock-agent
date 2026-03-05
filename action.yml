@@ -21,7 +21,7 @@ inputs:
   model:
     description: OpenAI model to use
     required: false
-    default: gpt-4o
+    default: gpt-5.2
 
 runs:
   using: composite

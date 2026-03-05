@@ -43,7 +43,7 @@ class Config(BaseSettings):
     openai_api_key: str = ""
     sherlock_db_path: str = ".ci-sherlock/history.db"
     sherlock_report_path: str = "playwright-report.json"
-    sherlock_model: str = "gpt-4o"
+    sherlock_model: str = "gpt-5.2"
     sherlock_slow_test_ms: int = 10_000
     sherlock_flaky_threshold: float = 0.10
     sherlock_ignored_tests: str = ""  # comma-separated glob patterns

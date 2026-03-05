@@ -33,12 +33,12 @@ Fix suggestion rules (suggested_fix, suggested_fix_file, suggested_fix_original)
 
 
 class LLMEngine:
-    def __init__(self, client, model: str = "gpt-4o") -> None:
+    def __init__(self, client, model: str = "gpt-5.2") -> None:
         self._client = client
         self._model = model
 
     @classmethod
-    def from_api_key(cls, api_key: str, model: str = "gpt-4o") -> "LLMEngine":
+    def from_api_key(cls, api_key: str, model: str = "gpt-5.2") -> "LLMEngine":
         import instructor
         from openai import OpenAI
         client = instructor.from_openai(OpenAI(api_key=api_key))
