@@ -5,6 +5,32 @@ from ci_sherlock.models import ChangedFile
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", re.MULTILINE)
 
 
+def find_original_in_patch(patch: str | None, original: str | None) -> int | None:
+    """
+    Search a unified diff patch for `original` and return its new-file line number.
+    Matches against context lines (space-prefixed) and added lines (+).
+    Returns None if not found.
+    """
+    if not patch or not original:
+        return None
+    target = original.strip()
+    m = _HUNK_RE.search(patch)
+    if not m:
+        return None
+    line_num = int(m.group(1))
+    for raw_line in patch[m.end():].splitlines():
+        if raw_line.startswith("+"):
+            if raw_line[1:].strip() == target:
+                return line_num
+            line_num += 1
+        elif raw_line.startswith(" "):
+            if raw_line[1:].strip() == target:
+                return line_num
+            line_num += 1
+        # "-" lines don't advance new-file counter; empty lines are hunk artefacts
+    return None
+
+
 def first_added_line(patch: str | None) -> int:
     """Return the file line number of the first added line in a unified diff patch."""
     if not patch:

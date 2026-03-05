@@ -118,6 +118,32 @@ def format_comment(
             "",
         ]
 
+    # Proposed fix
+    if insight and insight.suggested_fix and insight.suggested_fix_file:
+        lines += [
+            "### Proposed Fix",
+            f"_Apply via the inline suggestion comment on `{insight.suggested_fix_file}`, "
+            "or copy the diff below._",
+            "",
+            f"**File:** `{insight.suggested_fix_file}`",
+            "",
+        ]
+        if insight.suggested_fix_original:
+            lines += [
+                "```diff",
+                *[f"- {l}" for l in insight.suggested_fix_original.splitlines()],
+                *[f"+ {l}" for l in insight.suggested_fix.splitlines()],
+                "```",
+                "",
+            ]
+        else:
+            lines += [
+                "```",
+                insight.suggested_fix,
+                "```",
+                "",
+            ]
+
     # Flaky signals (Phase 3)
     if flaky_signals:
         lines += ["### Flaky Tests Detected", ""]

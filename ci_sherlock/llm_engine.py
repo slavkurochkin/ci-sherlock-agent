@@ -16,6 +16,14 @@ Rules:
 - Confidence should reflect how strong the evidence is (0.0 = guess, 1.0 = certain)
 - duration_ms includes ALL retry attempts — a 90s duration on a test with 2 retries
   means ~30s per attempt, not a genuinely slow test. Do not flag retried tests as slow.
+
+Fix suggestion rules (suggested_fix, suggested_fix_file, suggested_fix_original):
+- Only populate these when confidence > 0.7 AND a direct_match correlation exists
+- suggested_fix: the replacement lines ONLY — no surrounding context, no diff markers
+- suggested_fix_file: must be exactly one of the filenames listed under "Changed files"
+- suggested_fix_original: the exact verbatim original line(s) being replaced (copy from the diff, strip the leading space or + character)
+- The fix must be self-contained and safe — do not guess at logic you cannot see
+- If you cannot produce a reliable single-file fix, leave all three fields null
 """
 
 
@@ -84,6 +92,21 @@ class LLMEngine:
             sections.append(
                 "## Unmatched failures (no correlation to diff)\n"
                 + "\n".join(f"- {n}" for n in names)
+            )
+
+        # Fix eligibility hint
+        has_direct = any(c.reason == "direct_match" for c in analysis.correlations)
+        if has_direct and analysis.changed_files:
+            file_list = "\n".join(f"- {f.filename}" for f in analysis.changed_files[:20])
+            sections.append(
+                "## Fix suggestion eligibility\n"
+                "A direct_match correlation exists. You MAY populate suggested_fix fields.\n"
+                f"Valid targets for suggested_fix_file:\n{file_list}"
+            )
+        else:
+            sections.append(
+                "## Fix suggestion eligibility\n"
+                "No direct_match correlation — leave suggested_fix fields null."
             )
 
         return "\n\n".join(sections)

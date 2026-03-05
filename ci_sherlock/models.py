@@ -53,6 +53,11 @@ class LLMInsight(BaseModel):
     confidence: float
     recommendation: str
     flaky_tests: list[str]
+    # Proposed fix — rendered as a GitHub "suggested change" on the PR diff.
+    # Only populated when confidence > 0.7 and a direct_match correlation exists.
+    suggested_fix: str | None = None          # replacement lines (no surrounding context)
+    suggested_fix_file: str | None = None     # must be one of the PR's changed files
+    suggested_fix_original: str | None = None # exact original line(s) being replaced
 
 
 # Phase 3

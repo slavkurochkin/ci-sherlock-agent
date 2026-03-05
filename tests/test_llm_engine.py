@@ -199,6 +199,55 @@ def test_new_error_label_in_prompt(engine, mock_client):
     assert "new error" in user_content
 
 
+def test_fix_eligibility_hint_in_prompt_when_direct_match(engine, mock_client):
+    mock_client.chat.completions.create.return_value = LLMInsight(
+        root_cause="x", confidence=0.9, recommendation="y", flaky_tests=[]
+    )
+    from ci_sherlock.models import ChangedFile, Correlation
+    corr = Correlation(
+        test_name="should login",
+        test_file="tests/auth.spec.ts",
+        changed_file="src/Button.tsx",
+        score=1.0,
+        reason="direct_match",
+    )
+    analysis = make_analysis(
+        failed=[make_failed("should login", "tests/auth.spec.ts")],
+        correlations=[corr],
+    )
+    analysis.changed_files = [ChangedFile(filename="src/Button.tsx", status="modified", additions=2, deletions=1)]
+    engine.analyze(analysis)
+
+    call_args = mock_client.chat.completions.create.call_args
+    user_content = next(m["content"] for m in call_args.kwargs["messages"] if m["role"] == "user")
+    assert "direct_match" in user_content
+    assert "src/Button.tsx" in user_content
+    assert "suggested_fix" in user_content.lower() or "Fix suggestion" in user_content
+
+
+def test_fix_eligibility_hint_suppressed_when_no_direct_match(engine, mock_client):
+    mock_client.chat.completions.create.return_value = LLMInsight(
+        root_cause="x", confidence=0.5, recommendation="y", flaky_tests=[]
+    )
+    from ci_sherlock.models import Correlation
+    corr = Correlation(
+        test_name="should load",
+        test_file="tests/foo.spec.ts",
+        changed_file="src/api/users.ts",
+        score=0.6,
+        reason="same_directory",
+    )
+    analysis = make_analysis(
+        failed=[make_failed("should load", "tests/foo.spec.ts")],
+        correlations=[corr],
+    )
+    engine.analyze(analysis)
+
+    call_args = mock_client.chat.completions.create.call_args
+    user_content = next(m["content"] for m in call_args.kwargs["messages"] if m["role"] == "user")
+    assert "leave suggested_fix fields null" in user_content
+
+
 def test_system_prompt_present(engine, mock_client):
     mock_client.chat.completions.create.return_value = LLMInsight(
         root_cause="x", confidence=0.5, recommendation="y", flaky_tests=[]

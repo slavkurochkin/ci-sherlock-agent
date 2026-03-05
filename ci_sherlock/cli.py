@@ -21,7 +21,7 @@ def analyze(
     from ci_sherlock.parsers.playwright import PlaywrightParser
     from ci_sherlock.parsers.jest import JestParser
     from ci_sherlock.db import Database
-    from ci_sherlock.github_client import GitHubClient, first_added_line
+    from ci_sherlock.github_client import GitHubClient, first_added_line, find_original_in_patch
     from ci_sherlock.analyzer import Analyzer
     from ci_sherlock.commenter import format_comment, post_or_update_comment
     from ci_sherlock.llm_engine import LLMEngine
@@ -200,18 +200,44 @@ def analyze(
         review_comments = []
         direct = [c for c in analysis.correlations if c.reason == "direct_match"]
         for corr in direct[:5]:  # cap to avoid noise
-            # Find the matching ChangedFile to get the patch
             cf = next((f for f in analysis.changed_files if f.filename == corr.changed_file), None)
-            line = first_added_line(cf.patch if cf else None)
-            body = (
-                f"**CI Sherlock:** test `{corr.test_name}` failed and correlates directly with this file.\n\n"
-                + (f"> {corr.changed_file.split('/')[-1]}: error in `{corr.test_file}`")
+            patch = cf.patch if cf else None
+
+            # Check if LLM produced a suggested fix targeting this file
+            fix_for_this_file = (
+                insight
+                and insight.suggested_fix
+                and insight.suggested_fix_file == corr.changed_file
             )
+
+            if fix_for_this_file:
+                # Find the exact line the fix applies to; fall back to first added line
+                line = (
+                    find_original_in_patch(patch, insight.suggested_fix_original)
+                    or first_added_line(patch)
+                )
+                body = (
+                    f"**CI Sherlock proposed fix** — test `{corr.test_name}` failed here.\n\n"
+                    f"```suggestion\n{insight.suggested_fix}\n```"
+                )
+            else:
+                line = first_added_line(patch)
+                body = (
+                    f"**CI Sherlock:** test `{corr.test_name}` failed and correlates directly with this file.\n\n"
+                    f"> error in `{corr.test_file}`"
+                )
+
             review_comments.append({"path": corr.changed_file, "line": line, "body": body})
+
         if review_comments:
             try:
                 client.create_pull_review(cfg.pr_number, cfg.github_sha, review_comments)
-                console.print(f"  {len(review_comments)} inline review comment(s) posted")
+                fix_posted = any(
+                    insight and insight.suggested_fix and insight.suggested_fix_file == c["path"]
+                    for c in review_comments
+                )
+                label = "proposed fix" if fix_posted else "inline review comment(s)"
+                console.print(f"  {len(review_comments)} {label} posted")
             except Exception as exc:
                 console.print(f"  [dim]Inline review skipped: {exc}[/dim]")
 

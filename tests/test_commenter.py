@@ -94,4 +94,69 @@ def test_few_failures_no_details():
 def test_footer_contains_commit_sha():
     analysis = make_analysis(sha="deadbeef1234")
     body = format_comment(analysis)
-    assert "deadbee" in body  # first 7 chars
+    assert "deadbee" in body
+
+
+# --- Proposed fix section ---
+
+def test_suggested_fix_shown_in_comment():
+    analysis = make_analysis(failed=1)
+    insight = LLMInsight(
+        root_cause="selector renamed",
+        confidence=0.9,
+        recommendation="update selector",
+        flaky_tests=[],
+        suggested_fix="await page.getByRole('button', { name: 'Submit' }).click();",
+        suggested_fix_file="tests/todo.spec.ts",
+        suggested_fix_original="await page.click('.btn-primary');",
+    )
+    body = format_comment(analysis, insight=insight)
+    assert "Proposed Fix" in body
+    assert "tests/todo.spec.ts" in body
+    assert "await page.getByRole" in body
+
+
+def test_suggested_fix_diff_shown_when_original_provided():
+    analysis = make_analysis(failed=1)
+    insight = LLMInsight(
+        root_cause="x",
+        confidence=0.9,
+        recommendation="y",
+        flaky_tests=[],
+        suggested_fix="new line",
+        suggested_fix_file="src/foo.ts",
+        suggested_fix_original="old line",
+    )
+    body = format_comment(analysis, insight=insight)
+    assert "- old line" in body
+    assert "+ new line" in body
+
+
+def test_no_suggested_fix_section_when_fix_is_none():
+    analysis = make_analysis(failed=1)
+    insight = LLMInsight(
+        root_cause="environmental",
+        confidence=0.4,
+        recommendation="rerun",
+        flaky_tests=[],
+        suggested_fix=None,
+        suggested_fix_file=None,
+    )
+    body = format_comment(analysis, insight=insight)
+    assert "Proposed Fix" not in body
+
+
+def test_suggested_fix_without_original_shows_plain_block():
+    analysis = make_analysis(failed=1)
+    insight = LLMInsight(
+        root_cause="x",
+        confidence=0.9,
+        recommendation="y",
+        flaky_tests=[],
+        suggested_fix="const x = 2;",
+        suggested_fix_file="src/foo.ts",
+        suggested_fix_original=None,
+    )
+    body = format_comment(analysis, insight=insight)
+    assert "Proposed Fix" in body
+    assert "const x = 2;" in body  # first 7 chars
