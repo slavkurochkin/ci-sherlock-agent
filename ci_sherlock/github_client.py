@@ -9,27 +9,37 @@ _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", re.MULTILINE)
 def find_original_in_patch(patch: str | None, original: str | None) -> int | None:
     """
     Search a unified diff patch for `original` and return its new-file line number.
-    Prefers added lines (+) over context lines so suggestions land on changed code.
+    Handles multi-hunk patches correctly by resetting the line counter at each @@ header.
+    Prefers added (+) lines over context lines so suggestions land on changed code.
     Tries exact match first, then fuzzy (handles quote/semicolon differences from LLM).
     Returns None if not found.
     """
     if not patch or not original:
         return None
     target = original.strip()
-    m = _HUNK_RE.search(patch)
-    if not m:
-        return None
+
     added: list[tuple[str, int]] = []    # + lines only
     context: list[tuple[str, int]] = []  # unchanged context lines
-    line_num = int(m.group(1))
-    for raw_line in patch[m.end():].splitlines():
+
+    # Walk all hunks; each @@ header resets the new-file line counter.
+    lines = patch.splitlines()
+    line_num = 0
+    in_hunk = False
+    for raw_line in lines:
+        hunk_m = _HUNK_RE.match(raw_line)
+        if hunk_m:
+            line_num = int(hunk_m.group(1))
+            in_hunk = True
+            continue
+        if not in_hunk:
+            continue
         if raw_line.startswith("+"):
             added.append((raw_line[1:].strip(), line_num))
             line_num += 1
         elif raw_line.startswith(" "):
             context.append((raw_line[1:].strip(), line_num))
             line_num += 1
-        # "-" lines don't advance new-file counter; empty lines are hunk artefacts
+        # "-" lines don't advance new-file counter
 
     # 1. Exact match — prefer + lines first, then context
     for content, ln in added:
@@ -63,18 +73,24 @@ def first_added_line(patch: str | None) -> int:
     """Return the file line number of the first added line in a unified diff patch."""
     if not patch:
         return 1
-    m = _HUNK_RE.search(patch)
-    if not m:
-        return 1
-    line_num = int(m.group(1))
-    for raw_line in patch[m.end():].splitlines():
+    line_num = 0
+    in_hunk = False
+    first_hunk_start = None
+    for raw_line in patch.splitlines():
+        hunk_m = _HUNK_RE.match(raw_line)
+        if hunk_m:
+            line_num = int(hunk_m.group(1))
+            if first_hunk_start is None:
+                first_hunk_start = line_num
+            in_hunk = True
+            continue
+        if not in_hunk:
+            continue
         if raw_line.startswith("+"):
             return line_num
-        if raw_line.startswith(" "):   # context line — advances new-file counter
+        if raw_line.startswith(" "):
             line_num += 1
-        # "-" lines are deletions — don't advance new-file line counter
-        # empty lines (hunk boundary artefact) — skip
-    return int(m.group(1))
+    return first_hunk_start or 1
 
 GITHUB_API = "https://api.github.com"
 COMMENT_MARKER = "<!-- ci-sherlock -->"

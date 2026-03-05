@@ -83,3 +83,39 @@ def test_find_original_fuzzy_no_false_positive():
     patch = "@@ -1,2 +1,2 @@\n context line\n+added line\n"
     result = find_original_in_patch(patch, "totally different content xyz")
     assert result is None
+
+
+def test_find_original_multi_hunk_second_hunk():
+    # Target is in the SECOND hunk — line numbers must reset at each @@ header.
+    # hunk1: line_num=1, ctx->1, -old1->skip, +new1->2, ctx->3
+    # hunk2: line_num=20, ctx->20, -old2->skip, +target->21
+    patch = (
+        "@@ -1,4 +1,4 @@\n"
+        " ctx\n"
+        "-old1\n"
+        "+new1\n"
+        " ctx\n"
+        "@@ -20,4 +20,4 @@\n"
+        " ctx\n"
+        "-old2\n"
+        "+target line\n"
+        " ctx\n"
+    )
+    result = find_original_in_patch(patch, "target line")
+    assert result == 21
+
+
+def test_first_added_line_multi_hunk():
+    # First added line is in the second hunk (hunk1 has no + lines).
+    # hunk2: line_num=9, ctx->9 (line_num=10), +first->10
+    patch = (
+        "@@ -1,3 +1,2 @@\n"
+        " ctx\n"
+        "-deleted\n"
+        " ctx\n"
+        "@@ -10,3 +9,4 @@\n"
+        " ctx\n"
+        "+first added in hunk2\n"
+    )
+    result = first_added_line(patch)
+    assert result == 10
