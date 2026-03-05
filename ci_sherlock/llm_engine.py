@@ -21,7 +21,12 @@ Fix suggestion rules (suggested_fix, suggested_fix_file, suggested_fix_original)
 - Only populate these when confidence > 0.7 AND a direct_match correlation exists
 - suggested_fix: the replacement lines ONLY — no surrounding context, no diff markers
 - suggested_fix_file: must be exactly one of the filenames listed under "Changed files"
-- suggested_fix_original: the exact verbatim original line(s) being replaced (copy from the diff, strip the leading space or + character)
+- suggested_fix_original: VERBATIM copy of the broken line from the diff shown in this
+  prompt — strip only the leading diff prefix character (space or +), preserve all
+  spacing and punctuation exactly. Do NOT paraphrase or reformat.
+  If the broken line is not clearly present in the diff text you were given, set
+  all three fields to null. A null original is far better than a wrong one — a
+  wrong original causes the suggestion to be posted on an unrelated line.
 - The fix must be self-contained and safe — do not guess at logic you cannot see
 - If you cannot produce a reliable single-file fix, leave all three fields null
 """
@@ -101,7 +106,11 @@ class LLMEngine:
             sections.append(
                 "## Fix suggestion eligibility\n"
                 "A direct_match correlation exists. You MAY populate suggested_fix fields.\n"
-                f"Valid targets for suggested_fix_file:\n{file_list}"
+                f"Valid targets for suggested_fix_file:\n{file_list}\n\n"
+                "IMPORTANT: suggested_fix_original MUST be a verbatim copy of the broken\n"
+                "line exactly as it appears in the diff shown above (strip only the leading\n"
+                "' ' or '+' prefix). If the broken line is not clearly visible in the diff\n"
+                "text, set all three suggested_fix fields to null."
             )
         else:
             sections.append(

@@ -211,16 +211,12 @@ def analyze(
             )
 
             if fix_for_this_file:
-                # Find the exact line the fix applies to.
-                # If suggested_fix_original was provided, only post when we can
-                # locate the right line — wrong-line suggestions are worse than none.
-                if insight.suggested_fix_original:
-                    line = find_original_in_patch(patch, insight.suggested_fix_original)
-                else:
-                    line = first_added_line(patch)
+                # Only post the inline suggestion when we can pinpoint the exact line.
+                # Without suggested_fix_original we have no reliable anchor — a wrong-line
+                # suggestion is more harmful than no suggestion (the main comment still
+                # shows the proposed fix as a diff block).
+                line = find_original_in_patch(patch, insight.suggested_fix_original)
                 if line is None:
-                    # Could not locate target line — skip inline suggestion
-                    line = None
                     body = None
                 else:
                     body = (
