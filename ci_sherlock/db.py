@@ -166,14 +166,14 @@ class Database:
         )
 
     def get_runs(self, limit: int = 50) -> list[dict]:
-        return list(self._db.execute(
+        return [dict(row) for row in self._db.execute(
             "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?", [limit]
-        ).fetchall())
+        ).fetchall()]
 
     def get_test_results(self, run_id: str) -> list[dict]:
-        return list(self._db.execute(
+        return [dict(row) for row in self._db.execute(
             "SELECT * FROM test_results WHERE run_id = ?", [run_id]
-        ).fetchall())
+        ).fetchall()]
 
     def get_previous_run_failures(self, pr_number: int, exclude_run_id: str) -> set[str]:
         """Return the set of failed test_names from the most recent prior run on this PR."""
@@ -209,7 +209,7 @@ class Database:
         return {row[0]: row[1] for row in rows}
 
     def get_flaky_tests(self, last_n_runs: int = 20, threshold: float = 0.10) -> list[dict]:
-        return list(self._db.execute(
+        return [dict(row) for row in self._db.execute(
             """
             SELECT
                 test_name,
@@ -228,4 +228,4 @@ class Database:
             ORDER BY failure_rate DESC
             """,
             [last_n_runs, threshold],
-        ).fetchall())
+        ).fetchall()]
