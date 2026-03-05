@@ -2,6 +2,7 @@ import json
 import re
 from ci_sherlock.parsers.base import BaseParser
 from ci_sherlock.models import TestResult
+from ci_sherlock.fingerprint import fingerprint as _fingerprint
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -49,6 +50,7 @@ class JestParser(BaseParser):
                 duration_ms=duration_ms,
                 retry_count=0,
                 error_message=error_message,
+                error_fingerprint=_fingerprint(error_message, None) if error_message else None,
             ))
 
     @staticmethod

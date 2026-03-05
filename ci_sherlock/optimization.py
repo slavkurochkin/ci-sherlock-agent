@@ -8,6 +8,10 @@ SUITE_SLOW_TOTAL_MS = 120_000  # flag parallelization if total > 2 min
 
 
 class OptimizationEngine:
+    def __init__(self, slow_test_ms: int = SLOW_TEST_MS, suite_slow_total_ms: int = SUITE_SLOW_TOTAL_MS) -> None:
+        self._slow_test_ms = slow_test_ms
+        self._suite_slow_total_ms = suite_slow_total_ms
+
     def analyze(self, results: list[TestResult]) -> list[OptimizationSuggestion]:
         suggestions: list[OptimizationSuggestion] = []
         suggestions.extend(self.slow_tests(results))
@@ -16,7 +20,7 @@ class OptimizationEngine:
 
     def slow_tests(self, results: list[TestResult]) -> list[OptimizationSuggestion]:
         # Exclude failed tests — their duration is inflated by retries, not genuine slowness
-        candidates = [r for r in results if r.status not in ("failed",) and r.duration_ms >= SLOW_TEST_MS]
+        candidates = [r for r in results if r.status not in ("failed",) and r.duration_ms >= self._slow_test_ms]
         slow = sorted(candidates, key=lambda r: -r.duration_ms)[:SLOW_TEST_TOP_N]
 
         return [
@@ -57,7 +61,7 @@ class OptimizationEngine:
         # Only count passing tests for total duration — failed tests inflate via retries
         passing = [r for r in results if r.status not in ("failed",)]
         total_ms = sum(r.duration_ms for r in passing)
-        if total_ms > SUITE_SLOW_TOTAL_MS:
+        if total_ms > self._suite_slow_total_ms:
             minutes = total_ms / 60_000
             return [
                 OptimizationSuggestion(

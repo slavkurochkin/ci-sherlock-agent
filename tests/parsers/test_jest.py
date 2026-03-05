@@ -87,6 +87,19 @@ def test_invalid_report_raises(parser, tmp_path):
         parser.parse(str(bad))
 
 
+def test_fingerprint_set_on_failed_tests(results):
+    failed = [r for r in results if r.status == "failed"]
+    for r in failed:
+        assert r.error_fingerprint is not None
+        assert len(r.error_fingerprint) == 12
+
+
+def test_fingerprint_none_on_passed_tests(results):
+    passed = [r for r in results if r.status == "passed"]
+    for r in passed:
+        assert r.error_fingerprint is None
+
+
 def test_null_duration_defaults_to_zero(parser, tmp_path):
     report = tmp_path / "report.json"
     report.write_text('{"testResults": [{"testFilePath": "/abs/path/test.js", "status": "passed", '

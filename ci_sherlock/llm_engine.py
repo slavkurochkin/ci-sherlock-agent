@@ -31,11 +31,15 @@ class LLMEngine:
         client = instructor.from_openai(OpenAI(api_key=api_key))
         return cls(client=client, model=model)
 
-    def analyze(self, analysis: AnalysisResult) -> LLMInsight | None:
+    def analyze(
+        self,
+        analysis: AnalysisResult,
+        fingerprint_counts: dict[str, int] | None = None,
+    ) -> LLMInsight | None:
         if not analysis.failed_results:
             return None
 
-        prompt = self._build_prompt(analysis)
+        prompt = self._build_prompt(analysis, fingerprint_counts or {})
         try:
             return self._client.chat.completions.create(
                 model=self._model,
@@ -50,7 +54,7 @@ class LLMEngine:
             logger.warning("LLM analysis failed: %s — posting raw analysis only", exc)
             return None
 
-    def _build_prompt(self, analysis: AnalysisResult) -> str:
+    def _build_prompt(self, analysis: AnalysisResult, fingerprint_counts: dict[str, int] | None = None) -> str:
         sections: list[str] = []
 
         # Changed files with diff patches
@@ -66,7 +70,7 @@ class LLMEngine:
                 sections.append("## Changed files\nNo diff available (push event or missing token).")
 
         # Failed tests
-        sections.append(self._format_failures(analysis))
+        sections.append(self._format_failures(analysis, fingerprint_counts or {}))
 
         # Correlation signals
         if analysis.correlations:
@@ -95,7 +99,8 @@ class LLMEngine:
         return sorted(files)
 
     @staticmethod
-    def _format_failures(analysis: AnalysisResult) -> str:
+    def _format_failures(analysis: AnalysisResult, fingerprint_counts: dict[str, int] | None = None) -> str:
+        counts = fingerprint_counts or {}
         lines = [f"## Failed tests ({analysis.failed_tests} total)"]
         for test in analysis.failed_results[:10]:
             if test.retry_count:
@@ -107,7 +112,9 @@ class LLMEngine:
                 )
             else:
                 retry_note = ""
-            lines.append(f"\n### {test.test_name}{retry_note}")
+            seen = counts.get(test.error_fingerprint or "", 0)
+            seen_note = f" [seen in {seen} previous run(s)]" if seen > 0 else " [new error]"
+            lines.append(f"\n### {test.test_name}{retry_note}{seen_note}")
             lines.append(f"File: `{test.test_file}`")
             if test.error_message:
                 lines.append(f"Error: {test.error_message[:400]}")

@@ -3,6 +3,7 @@ import re
 from typing import Any
 from ci_sherlock.parsers.base import BaseParser
 from ci_sherlock.models import TestResult
+from ci_sherlock.fingerprint import fingerprint as _fingerprint
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -83,6 +84,7 @@ class PlaywrightParser(BaseParser):
                 error_message=error_message,
                 error_stack=error_stack,
                 trace_path=trace_path,
+                error_fingerprint=_fingerprint(error_message, error_stack) if error_message or error_stack else None,
             ))
 
     @staticmethod

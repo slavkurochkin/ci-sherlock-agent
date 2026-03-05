@@ -157,6 +157,48 @@ def test_model_passed_to_client(engine, mock_client):
     assert call_args.kwargs["model"] == "gpt-4o"
 
 
+def test_fingerprint_count_appears_in_prompt(engine, mock_client):
+    mock_client.chat.completions.create.return_value = LLMInsight(
+        root_cause="x", confidence=0.5, recommendation="y", flaky_tests=[]
+    )
+    failed = TestResult(
+        test_name="known failure",
+        test_file="tests/foo.spec.ts",
+        status="failed",
+        duration_ms=1000,
+        error_message="Expected true to be false",
+        error_fingerprint="abc123def456",
+    )
+    analysis = make_analysis(failed=[failed])
+    engine.analyze(analysis, fingerprint_counts={"abc123def456": 5})
+
+    call_args = mock_client.chat.completions.create.call_args
+    messages = call_args.kwargs["messages"]
+    user_content = next(m["content"] for m in messages if m["role"] == "user")
+    assert "5 previous run" in user_content
+
+
+def test_new_error_label_in_prompt(engine, mock_client):
+    mock_client.chat.completions.create.return_value = LLMInsight(
+        root_cause="x", confidence=0.5, recommendation="y", flaky_tests=[]
+    )
+    failed = TestResult(
+        test_name="brand new failure",
+        test_file="tests/foo.spec.ts",
+        status="failed",
+        duration_ms=1000,
+        error_message="Something new broke",
+        error_fingerprint="newfingerprint",
+    )
+    analysis = make_analysis(failed=[failed])
+    engine.analyze(analysis, fingerprint_counts={})
+
+    call_args = mock_client.chat.completions.create.call_args
+    messages = call_args.kwargs["messages"]
+    user_content = next(m["content"] for m in messages if m["role"] == "user")
+    assert "new error" in user_content
+
+
 def test_system_prompt_present(engine, mock_client):
     mock_client.chat.completions.create.return_value = LLMInsight(
         root_cause="x", confidence=0.5, recommendation="y", flaky_tests=[]

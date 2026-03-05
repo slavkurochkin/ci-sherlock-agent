@@ -7,6 +7,8 @@ def format_comment(
     insight: LLMInsight | None = None,
     flaky_signals: list[FlakySignal] | None = None,
     optimization_suggestions: list[OptimizationSuggestion] | None = None,
+    new_failures: set[str] | None = None,
+    fixed_failures: set[str] | None = None,
 ) -> str:
     lines = [COMMENT_MARKER, "## CI Sherlock Analysis", ""]
 
@@ -19,6 +21,18 @@ def format_comment(
         f"**{analysis.skipped_tests}** skipped &nbsp; "
         f"— {analysis.duration_ms / 1000:.1f}s total"
     )
+
+    # Delta line (new/fixed vs previous run)
+    if new_failures is not None or fixed_failures is not None:
+        delta_parts = []
+        if new_failures:
+            delta_parts.append(f"**+{len(new_failures)} new**")
+        if fixed_failures:
+            delta_parts.append(f"**{len(fixed_failures)} fixed** since last run")
+        if not new_failures and not fixed_failures:
+            delta_parts.append("_no change vs last run_")
+        lines.append(f"_{' · '.join(delta_parts)}_")
+
     lines.append("")
 
     # LLM insight block
@@ -46,6 +60,8 @@ def format_comment(
             if test.error_message:
                 msg = test.error_message[:200].replace("\n", " ")
                 failure_lines.append(f"  ```\n  {msg}\n  ```")
+            if test.trace_path:
+                failure_lines.append(f"  [Trace]({test.trace_path})")
         if len(analysis.failed_results) > 10:
             failure_lines.append(f"- _…and {len(analysis.failed_results) - 10} more_")
 
@@ -142,8 +158,13 @@ def post_or_update_comment(
     insight: LLMInsight | None = None,
     flaky_signals: list[FlakySignal] | None = None,
     optimization_suggestions: list[OptimizationSuggestion] | None = None,
+    new_failures: set[str] | None = None,
+    fixed_failures: set[str] | None = None,
 ) -> str | None:
-    body = format_comment(analysis, insight, flaky_signals, optimization_suggestions)
+    body = format_comment(
+        analysis, insight, flaky_signals, optimization_suggestions,
+        new_failures=new_failures, fixed_failures=fixed_failures,
+    )
     existing_id = client.get_existing_comment(pr_number)
     if existing_id:
         return client.update_comment(existing_id, body)

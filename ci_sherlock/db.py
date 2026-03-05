@@ -43,10 +43,14 @@ class Database:
                 "error_message": str,
                 "error_stack": str,
                 "trace_path": str,
+                "error_fingerprint": str,
             },
             pk="id",
             if_not_exists=True,
         )
+        # Migrate existing DBs that predate the error_fingerprint column
+        if "error_fingerprint" not in self._db["test_results"].columns_dict:
+            self._db["test_results"].add_column("error_fingerprint", str)
 
         self._db["correlations"].create(
             {
@@ -124,6 +128,7 @@ class Database:
                     "error_message": r.error_message,
                     "error_stack": r.error_stack,
                     "trace_path": r.trace_path,
+                    "error_fingerprint": r.error_fingerprint,
                 }
                 for r in results
             ],
@@ -169,6 +174,39 @@ class Database:
         return list(self._db.execute(
             "SELECT * FROM test_results WHERE run_id = ?", [run_id]
         ).fetchall())
+
+    def get_previous_run_failures(self, pr_number: int, exclude_run_id: str) -> set[str]:
+        """Return the set of failed test_names from the most recent prior run on this PR."""
+        rows = self._db.execute(
+            """
+            SELECT tr.test_name
+            FROM test_results tr
+            JOIN runs r ON tr.run_id = r.id
+            WHERE r.pr_number = ?
+              AND r.id != ?
+              AND tr.status IN ('failed', 'flaky')
+            ORDER BY r.created_at DESC
+            LIMIT 200
+            """,
+            [pr_number, exclude_run_id],
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def get_fingerprint_counts(self, fingerprints: list[str]) -> dict[str, int]:
+        """Return how many distinct runs each fingerprint has appeared in."""
+        if not fingerprints:
+            return {}
+        placeholders = ",".join("?" * len(fingerprints))
+        rows = self._db.execute(
+            f"""
+            SELECT error_fingerprint, COUNT(DISTINCT run_id) AS seen
+            FROM test_results
+            WHERE error_fingerprint IN ({placeholders})
+            GROUP BY error_fingerprint
+            """,
+            fingerprints,
+        ).fetchall()
+        return {row[0]: row[1] for row in rows}
 
     def get_flaky_tests(self, last_n_runs: int = 20, threshold: float = 0.10) -> list[dict]:
         return list(self._db.execute(

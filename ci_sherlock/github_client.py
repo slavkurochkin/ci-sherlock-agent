@@ -1,5 +1,26 @@
+import re
 import httpx
 from ci_sherlock.models import ChangedFile
+
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", re.MULTILINE)
+
+
+def first_added_line(patch: str | None) -> int:
+    """Return the file line number of the first added line in a unified diff patch."""
+    if not patch:
+        return 1
+    m = _HUNK_RE.search(patch)
+    if not m:
+        return 1
+    line_num = int(m.group(1))
+    for raw_line in patch[m.end():].splitlines():
+        if raw_line.startswith("+"):
+            return line_num
+        if raw_line.startswith(" "):   # context line — advances new-file counter
+            line_num += 1
+        # "-" lines are deletions — don't advance new-file line counter
+        # empty lines (hunk boundary artefact) — skip
+    return int(m.group(1))
 
 GITHUB_API = "https://api.github.com"
 COMMENT_MARKER = "<!-- ci-sherlock -->"
@@ -74,3 +95,64 @@ class GitHubClient:
         )
         resp.raise_for_status()
         return resp.json()["html_url"]
+
+    def create_check_run(
+        self,
+        head_sha: str,
+        conclusion: str,
+        title: str,
+        summary: str,
+        name: str = "CI Sherlock",
+    ) -> None:
+        """
+        Post a GitHub Check Run with pass/fail status.
+        Requires `checks: write` permission. Fails silently on 403.
+        conclusion: "success" | "failure" | "neutral"
+        """
+        resp = httpx.post(
+            f"{GITHUB_API}/repos/{self._repo}/check-runs",
+            headers=self._headers,
+            json={
+                "name": name,
+                "head_sha": head_sha,
+                "status": "completed",
+                "conclusion": conclusion,
+                "output": {"title": title, "summary": summary},
+            },
+            timeout=15,
+        )
+        if resp.status_code == 403:
+            return  # missing checks:write permission — non-fatal
+        resp.raise_for_status()
+
+    def create_pull_review(
+        self,
+        pr_number: int,
+        commit_sha: str,
+        comments: list[dict],
+    ) -> None:
+        """
+        Post inline review comments on the PR diff.
+        Each comment: {"path": str, "line": int, "body": str}
+        Fails silently on 403 or 422 (bad position).
+        """
+        if not comments:
+            return
+        # Convert to GitHub's review comment format
+        github_comments = [
+            {"path": c["path"], "line": c["line"], "side": "RIGHT", "body": c["body"]}
+            for c in comments
+        ]
+        resp = httpx.post(
+            f"{GITHUB_API}/repos/{self._repo}/pulls/{pr_number}/reviews",
+            headers=self._headers,
+            json={
+                "commit_id": commit_sha,
+                "event": "COMMENT",
+                "comments": github_comments,
+            },
+            timeout=15,
+        )
+        if resp.status_code in (403, 422):
+            return  # missing permission or bad position — non-fatal
+        resp.raise_for_status()

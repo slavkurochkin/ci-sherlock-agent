@@ -11,6 +11,7 @@ class TestResult(BaseModel):
     error_message: str | None = None
     error_stack: str | None = None
     trace_path: str | None = None
+    error_fingerprint: str | None = None  # computed at parse time
 
 
 class ChangedFile(BaseModel):

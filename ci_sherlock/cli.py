@@ -1,5 +1,9 @@
+import fnmatch
+import json as _json
 import os
 import sys
+from typing import List
+
 import typer
 from rich.console import Console
 
@@ -9,45 +13,68 @@ console = Console()
 
 @app.command()
 def analyze(
-    report: str = typer.Option(None, help="Path to test report (overrides config)"),
+    report: List[str] = typer.Option(None, help="Path(s) to test report(s). Repeat for multiple."),
     db: str = typer.Option(None, help="Path to SQLite DB (overrides config)"),
 ):
     """Analyze test results, correlate with PR diff, post summary comment."""
-    from ci_sherlock.config import Config
+    from ci_sherlock.config import Config, apply_toml_config
     from ci_sherlock.parsers.playwright import PlaywrightParser
     from ci_sherlock.parsers.jest import JestParser
     from ci_sherlock.db import Database
-    from ci_sherlock.github_client import GitHubClient
+    from ci_sherlock.github_client import GitHubClient, first_added_line
     from ci_sherlock.analyzer import Analyzer
     from ci_sherlock.commenter import format_comment, post_or_update_comment
     from ci_sherlock.llm_engine import LLMEngine
     from ci_sherlock.optimization import OptimizationEngine
     from ci_sherlock.notifier import notify_slack
 
+    apply_toml_config()
     cfg = Config()
-    report_path = report or cfg.sherlock_report_path
+
+    report_paths = list(report) if report else [cfg.sherlock_report_path]
     db_path = db or cfg.sherlock_db_path
 
-    console.print(f"[bold]CI Sherlock[/bold] — analyzing [cyan]{report_path}[/cyan]")
+    console.print(f"[bold]CI Sherlock[/bold] — analyzing {len(report_paths)} report(s)")
 
-    # Detect parser
-    import json as _json
-    try:
-        with open(report_path) as _f:
-            _data = _json.load(_f)
-        parser = JestParser() if "testResults" in _data else PlaywrightParser()
-    except (FileNotFoundError, _json.JSONDecodeError):
-        parser = PlaywrightParser()
+    # Parse + merge all reports
+    all_results = []
+    for path in report_paths:
+        try:
+            with open(path) as f:
+                data = _json.load(f)
+            parser = JestParser() if "testResults" in data else PlaywrightParser()
+        except (FileNotFoundError, _json.JSONDecodeError):
+            parser = PlaywrightParser()
 
-    console.print(f"  Using [bold]{parser.name}[/bold] parser")
+        console.print(f"  [cyan]{path}[/cyan] → [bold]{parser.name}[/bold] parser")
+        try:
+            all_results.extend(parser.parse(path))
+        except FileNotFoundError:
+            console.print(f"[red]Report not found:[/red] {path}")
+            raise typer.Exit(1)
 
-    try:
-        results = parser.parse(report_path)
-    except FileNotFoundError:
-        console.print(f"[red]Report not found:[/red] {report_path}")
-        raise typer.Exit(1)
+    # Deduplicate if same test appears in multiple reports (keep worst status)
+    _STATUS_RANK = {"failed": 0, "flaky": 1, "skipped": 2, "passed": 3}
+    seen: dict[tuple, object] = {}
+    for r in all_results:
+        key = (r.test_name, r.test_file)
+        if key not in seen or _STATUS_RANK[r.status] < _STATUS_RANK[seen[key].status]:
+            seen[key] = r
+    results = list(seen.values())
 
-    console.print(f"  Parsed [bold]{len(results)}[/bold] tests")
+    # Filter ignored tests
+    ignored_patterns = cfg.ignored_test_patterns
+    if ignored_patterns:
+        before = len(results)
+        results = [
+            r for r in results
+            if not any(fnmatch.fnmatch(r.test_name, p) for p in ignored_patterns)
+        ]
+        ignored_count = before - len(results)
+        if ignored_count:
+            console.print(f"  [dim]Ignored {ignored_count} test(s) matching patterns[/dim]")
+
+    console.print(f"  Parsed [bold]{len(results)}[/bold] tests total")
 
     # Fetch PR diff
     changed_files = []
@@ -81,12 +108,39 @@ def analyze(
     if failed:
         console.print(f"  [bold]{len(analysis.correlations)}[/bold] failure-to-diff correlations found")
 
+    # Write to DB early so fingerprint history is queryable
+    database = Database(db_path)
+    database.write_run(analysis)
+    database.write_results(analysis.run_id, results)
+    database.write_correlations(analysis.run_id, analysis.correlations)
+
+    # Fingerprint history
+    fingerprints = [r.error_fingerprint for r in analysis.failed_results if r.error_fingerprint]
+    fp_counts = database.get_fingerprint_counts(fingerprints) if fingerprints else {}
+    recurring = sum(1 for c in fp_counts.values() if c > 0)
+    if recurring:
+        console.print(f"  [dim]{recurring} failure(s) seen in previous runs[/dim]")
+
+    # Delta vs previous run for this PR
+    new_failures: set[str] | None = None
+    fixed_failures: set[str] | None = None
+    if cfg.pr_number:
+        prev_failed = database.get_previous_run_failures(cfg.pr_number, analysis.run_id)
+        if prev_failed:
+            current_failed = {r.test_name for r in analysis.failed_results}
+            new_failures = current_failed - prev_failed
+            fixed_failures = prev_failed - current_failed
+            console.print(
+                f"  Delta vs last run: [red]+{len(new_failures)} new[/red]  "
+                f"[green]{len(fixed_failures)} fixed[/green]"
+            )
+
     # LLM analysis
     insight = None
     if cfg.openai_api_key and analysis.failed_tests > 0:
         console.print("  Running LLM root cause analysis...")
         engine = LLMEngine.from_api_key(cfg.openai_api_key, model=cfg.sherlock_model)
-        insight = engine.analyze(analysis)
+        insight = engine.analyze(analysis, fingerprint_counts=fp_counts)
         if insight:
             console.print(f"  Root cause: [italic]{insight.root_cause[:80]}[/italic] ({int(insight.confidence * 100)}% confidence)")
         else:
@@ -94,46 +148,90 @@ def analyze(
     elif not cfg.openai_api_key:
         console.print("  [yellow]OPENAI_API_KEY not set — skipping LLM analysis[/yellow]")
 
-    # Flaky detection (Phase 3)
+    # Flaky detection
     flaky_signals = analyzer.detect_flaky_current(results)
     flaky_rows = []
     try:
-        # Historical flaky needs existing DB — best-effort
-        tmp_db = Database(db_path)
-        flaky_rows = tmp_db.get_flaky_tests()
+        flaky_rows = database.get_flaky_tests(threshold=cfg.sherlock_flaky_threshold)
     except Exception:
         pass
-    flaky_signals += analyzer.detect_flaky_historical(flaky_rows)
+    flaky_signals += analyzer.detect_flaky_historical(flaky_rows, threshold=cfg.sherlock_flaky_threshold)
     if flaky_signals:
         console.print(f"  [yellow]{len(flaky_signals)}[/yellow] flaky test(s) detected")
 
-    # Optimization signals (Phase 3)
-    opt_engine = OptimizationEngine()
+    # Optimization signals
+    opt_engine = OptimizationEngine(slow_test_ms=cfg.sherlock_slow_test_ms)
     suggestions = opt_engine.analyze(results)
     suggestions += opt_engine.check_missing_cache()
     if suggestions:
         console.print(f"  [yellow]{len(suggestions)}[/yellow] optimization suggestion(s)")
 
-    # Write to DB
-    database = Database(db_path)
-    database.write_run(analysis)
-    database.write_results(analysis.run_id, results)
-    database.write_correlations(analysis.run_id, analysis.correlations)
+    # Persist insight
     if insight:
         database.write_insight(analysis.run_id, insight, model=cfg.sherlock_model)
     console.print(f"  Results written to [cyan]{db_path}[/cyan]")
 
+    # GitHub Checks API
+    if client and cfg.github_sha:
+        conclusion = "failure" if analysis.failed_tests > 0 else "success"
+        check_title = (
+            f"{analysis.failed_tests} test(s) failed"
+            if analysis.failed_tests > 0
+            else f"All {analysis.passed_tests} tests passed"
+        )
+        check_summary = (
+            f"{analysis.passed_tests} passed · {analysis.failed_tests} failed · {analysis.skipped_tests} skipped"
+        )
+        if insight:
+            check_summary += f"\n\n**Root cause:** {insight.root_cause}"
+        try:
+            client.create_check_run(
+                head_sha=cfg.github_sha,
+                conclusion=conclusion,
+                title=check_title,
+                summary=check_summary,
+            )
+            console.print("  GitHub Check Run created")
+        except Exception as exc:
+            console.print(f"  [dim]Check Run skipped: {exc}[/dim]")
+
+    # Inline review comments on direct_match correlations
+    if client and cfg.pr_number and cfg.github_sha and analysis.correlations:
+        review_comments = []
+        direct = [c for c in analysis.correlations if c.reason == "direct_match"]
+        for corr in direct[:5]:  # cap to avoid noise
+            # Find the matching ChangedFile to get the patch
+            cf = next((f for f in analysis.changed_files if f.filename == corr.changed_file), None)
+            line = first_added_line(cf.patch if cf else None)
+            body = (
+                f"**CI Sherlock:** test `{corr.test_name}` failed and correlates directly with this file.\n\n"
+                + (f"> {corr.changed_file.split('/')[-1]}: error in `{corr.test_file}`")
+            )
+            review_comments.append({"path": corr.changed_file, "line": line, "body": body})
+        if review_comments:
+            try:
+                client.create_pull_review(cfg.pr_number, cfg.github_sha, review_comments)
+                console.print(f"  {len(review_comments)} inline review comment(s) posted")
+            except Exception as exc:
+                console.print(f"  [dim]Inline review skipped: {exc}[/dim]")
+
     # Post PR comment
     comment_url = None
     if client and cfg.pr_number:
-        comment_url = post_or_update_comment(client, cfg.pr_number, analysis, insight, flaky_signals, suggestions)
+        comment_url = post_or_update_comment(
+            client, cfg.pr_number, analysis, insight, flaky_signals, suggestions,
+            new_failures=new_failures, fixed_failures=fixed_failures,
+        )
         if comment_url:
             console.print(f"  PR comment posted: [link]{comment_url}[/link]")
 
     # GitHub Actions step summary
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
-        comment_body = format_comment(analysis, insight, flaky_signals, suggestions)
+        comment_body = format_comment(
+            analysis, insight, flaky_signals, suggestions,
+            new_failures=new_failures, fixed_failures=fixed_failures,
+        )
         with open(summary_path, "a") as _sf:
             _sf.write(comment_body)
         console.print("  Step summary written to GITHUB_STEP_SUMMARY")
@@ -154,7 +252,6 @@ def dashboard(
 ):
     """Launch the Streamlit dashboard."""
     import subprocess
-    import os
     from ci_sherlock.config import Config
 
     cfg = Config()
