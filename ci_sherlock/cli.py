@@ -211,15 +211,22 @@ def analyze(
             )
 
             if fix_for_this_file:
-                # Find the exact line the fix applies to; fall back to first added line
-                line = (
-                    find_original_in_patch(patch, insight.suggested_fix_original)
-                    or first_added_line(patch)
-                )
-                body = (
-                    f"**CI Sherlock proposed fix** — test `{corr.test_name}` failed here.\n\n"
-                    f"```suggestion\n{insight.suggested_fix}\n```"
-                )
+                # Find the exact line the fix applies to.
+                # If suggested_fix_original was provided, only post when we can
+                # locate the right line — wrong-line suggestions are worse than none.
+                if insight.suggested_fix_original:
+                    line = find_original_in_patch(patch, insight.suggested_fix_original)
+                else:
+                    line = first_added_line(patch)
+                if line is None:
+                    # Could not locate target line — skip inline suggestion
+                    line = None
+                    body = None
+                else:
+                    body = (
+                        f"**CI Sherlock proposed fix** — test `{corr.test_name}` failed here.\n\n"
+                        f"```suggestion\n{insight.suggested_fix}\n```"
+                    )
             else:
                 line = first_added_line(patch)
                 body = (
@@ -227,7 +234,8 @@ def analyze(
                     f"> error in `{corr.test_file}`"
                 )
 
-            review_comments.append({"path": corr.changed_file, "line": line, "body": body})
+            if line is not None and body is not None:
+                review_comments.append({"path": corr.changed_file, "line": line, "body": body})
 
         if review_comments:
             try:

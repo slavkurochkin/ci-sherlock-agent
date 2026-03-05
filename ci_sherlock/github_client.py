@@ -9,7 +9,7 @@ _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", re.MULTILINE)
 def find_original_in_patch(patch: str | None, original: str | None) -> int | None:
     """
     Search a unified diff patch for `original` and return its new-file line number.
-    Matches against context lines (space-prefixed) and added lines (+).
+    Prefers added lines (+) over context lines so suggestions land on changed code.
     Tries exact match first, then fuzzy (handles quote/semicolon differences from LLM).
     Returns None if not found.
     """
@@ -19,27 +19,43 @@ def find_original_in_patch(patch: str | None, original: str | None) -> int | Non
     m = _HUNK_RE.search(patch)
     if not m:
         return None
-    candidates: list[tuple[str, int]] = []
+    added: list[tuple[str, int]] = []    # + lines only
+    context: list[tuple[str, int]] = []  # unchanged context lines
     line_num = int(m.group(1))
     for raw_line in patch[m.end():].splitlines():
         if raw_line.startswith("+"):
-            candidates.append((raw_line[1:].strip(), line_num))
+            added.append((raw_line[1:].strip(), line_num))
             line_num += 1
         elif raw_line.startswith(" "):
-            candidates.append((raw_line[1:].strip(), line_num))
+            context.append((raw_line[1:].strip(), line_num))
             line_num += 1
         # "-" lines don't advance new-file counter; empty lines are hunk artefacts
-    # Exact match first
-    for content, ln in candidates:
+
+    # 1. Exact match — prefer + lines first, then context
+    for content, ln in added:
         if content == target:
             return ln
-    # Fuzzy match — handles LLM quote style / semicolon differences
-    contents = [c for c, _ in candidates]
-    matches = difflib.get_close_matches(target, contents, n=1, cutoff=0.8)
-    if matches:
-        for content, ln in candidates:
-            if content == matches[0]:
-                return ln
+    for content, ln in context:
+        if content == target:
+            return ln
+
+    # 2. Fuzzy match — + lines first, then context
+    added_contents = [c for c, _ in added]
+    if added_contents:
+        matches = difflib.get_close_matches(target, added_contents, n=1, cutoff=0.8)
+        if matches:
+            for content, ln in added:
+                if content == matches[0]:
+                    return ln
+
+    context_contents = [c for c, _ in context]
+    if context_contents:
+        matches = difflib.get_close_matches(target, context_contents, n=1, cutoff=0.8)
+        if matches:
+            for content, ln in context:
+                if content == matches[0]:
+                    return ln
+
     return None
 
 
