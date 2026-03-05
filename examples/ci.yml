@@ -16,7 +16,6 @@ jobs:
 
       - name: Run Playwright tests
         run: npx playwright test
-        continue-on-error: true  # let sherlock job always run
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
