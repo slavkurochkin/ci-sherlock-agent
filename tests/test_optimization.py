@@ -34,6 +34,23 @@ def test_fast_test_not_flagged(engine):
     assert len(suggestions) == 0
 
 
+def test_failed_test_not_flagged_as_slow(engine):
+    # Failed tests have inflated duration due to retries — should not be flagged
+    results = [make_test("broken test", SLOW_TEST_MS * 3, status="failed")]
+    suggestions = engine.slow_tests(results)
+    assert len(suggestions) == 0
+
+
+def test_parallelization_excludes_failed_tests(engine):
+    # Failed test with retries should not push total over threshold
+    results = [
+        make_test("broken", SUITE_SLOW_TOTAL_MS, status="failed"),
+        make_test("fast", 1000, status="passed"),
+    ]
+    suggestions = engine.check_parallelization(results)
+    assert len(suggestions) == 0
+
+
 def test_slow_tests_capped_at_top_n(engine):
     results = [make_test(f"slow-{i}", SLOW_TEST_MS + i * 1000) for i in range(10)]
     suggestions = engine.slow_tests(results)

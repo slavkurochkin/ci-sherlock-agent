@@ -14,6 +14,8 @@ Rules:
 - If failures look unrelated to any diff, say so and flag them as potentially environmental
 - If a test has retries that eventually passed, flag it as flaky
 - Confidence should reflect how strong the evidence is (0.0 = guess, 1.0 = certain)
+- duration_ms includes ALL retry attempts — a 90s duration on a test with 2 retries
+  means ~30s per attempt, not a genuinely slow test. Do not flag retried tests as slow.
 """
 
 
@@ -92,7 +94,15 @@ class LLMEngine:
     def _format_failures(analysis: AnalysisResult) -> str:
         lines = [f"## Failed tests ({analysis.failed_tests} total)"]
         for test in analysis.failed_results[:10]:
-            retry_note = f" [retried {test.retry_count}x, still {test.status}]" if test.retry_count else ""
+            if test.retry_count:
+                approx_ms = test.duration_ms // (test.retry_count + 1)
+                retry_note = (
+                    f" [retried {test.retry_count}x, still {test.status}]"
+                    f" — duration {test.duration_ms}ms is total across all attempts"
+                    f" (~{approx_ms}ms per attempt)"
+                )
+            else:
+                retry_note = ""
             lines.append(f"\n### {test.test_name}{retry_note}")
             lines.append(f"File: `{test.test_file}`")
             if test.error_message:

@@ -14,10 +14,9 @@ class OptimizationEngine:
         return suggestions
 
     def slow_tests(self, results: list[TestResult]) -> list[OptimizationSuggestion]:
-        slow = sorted(
-            [r for r in results if r.duration_ms >= SLOW_TEST_MS],
-            key=lambda r: -r.duration_ms,
-        )[:SLOW_TEST_TOP_N]
+        # Exclude failed tests — their duration is inflated by retries, not genuine slowness
+        candidates = [r for r in results if r.status not in ("failed",) and r.duration_ms >= SLOW_TEST_MS]
+        slow = sorted(candidates, key=lambda r: -r.duration_ms)[:SLOW_TEST_TOP_N]
 
         return [
             OptimizationSuggestion(
@@ -30,7 +29,9 @@ class OptimizationEngine:
         ]
 
     def check_parallelization(self, results: list[TestResult]) -> list[OptimizationSuggestion]:
-        total_ms = sum(r.duration_ms for r in results)
+        # Only count passing tests for total duration — failed tests inflate via retries
+        passing = [r for r in results if r.status not in ("failed",)]
+        total_ms = sum(r.duration_ms for r in passing)
         if total_ms > SUITE_SLOW_TOTAL_MS:
             minutes = total_ms / 60_000
             return [
