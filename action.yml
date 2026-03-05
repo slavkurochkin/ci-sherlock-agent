@@ -28,7 +28,7 @@ runs:
   steps:
     - name: Install CI Sherlock
       shell: bash
-      run: pip install ci-sherlock --quiet
+      run: pip install git+https://github.com/slavkurochkin/ci-sherlock-agent.git --quiet
 
     - name: Run analysis
       shell: bash
