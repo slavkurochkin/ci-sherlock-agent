@@ -80,7 +80,9 @@ class LLMEngine:
 
     @staticmethod
     def _get_changed_files(analysis: AnalysisResult) -> list[str]:
-        # Extract unique changed files from correlations + unmatched
+        # Prefer the full diff stored on the result; fall back to correlation-derived
+        if analysis.changed_files:
+            return [f.filename for f in analysis.changed_files]
         files: set[str] = set()
         for c in analysis.correlations:
             files.add(c.changed_file)

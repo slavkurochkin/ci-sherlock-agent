@@ -163,3 +163,44 @@ def test_no_changed_files_all_unmatched(analyzer):
 
     assert len(analysis.correlations) == 0
     assert len(analysis.unmatched_failures) == 1
+
+
+def test_absolute_path_matches_relative(analyzer):
+    # Playwright on CI reports absolute paths; GitHub API returns relative
+    results = [make_test(
+        "should login",
+        "/home/runner/work/todo-app/todo-app/tests/auth/login.spec.ts",
+    )]
+    changed = [make_changed("tests/auth/login.spec.ts")]
+
+    analysis = analyzer.correlate(
+        results=results,
+        changed_files=changed,
+        run_id="run-1",
+        repo="org/repo",
+        pr_number=1,
+        commit_sha="abc",
+        branch="main",
+    )
+
+    assert len(analysis.correlations) == 1
+    assert analysis.correlations[0].score == 1.0
+    assert analysis.correlations[0].reason == "direct_match"
+
+
+def test_changed_files_stored_on_result(analyzer):
+    results = [make_test("should work", "tests/foo.spec.ts", "passed")]
+    changed = [make_changed("src/App.tsx")]
+
+    analysis = analyzer.correlate(
+        results=results,
+        changed_files=changed,
+        run_id="run-1",
+        repo="org/repo",
+        pr_number=1,
+        commit_sha="abc",
+        branch="main",
+    )
+
+    assert len(analysis.changed_files) == 1
+    assert analysis.changed_files[0].filename == "src/App.tsx"

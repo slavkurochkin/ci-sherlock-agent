@@ -44,6 +44,7 @@ class Analyzer:
             failed_results=failed,
             correlations=correlations,
             unmatched_failures=unmatched,
+            changed_files=changed_files,
         )
 
     def _match(self, test: TestResult, changed_paths: list[str]) -> list[Correlation]:
@@ -55,7 +56,7 @@ class Analyzer:
         for changed in changed_paths:
             changed_dir = os.path.dirname(changed)
 
-            if self._normalize(test_file) == self._normalize(changed):
+            if self._same_file(test_file, changed):
                 matches.append(Correlation(
                     test_name=test.test_name,
                     test_file=test_file,
@@ -63,7 +64,7 @@ class Analyzer:
                     score=1.0,
                     reason="direct_match",
                 ))
-            elif test_dir and changed_dir and self._normalize(test_dir) == self._normalize(changed_dir):
+            elif test_dir and changed_dir and self._same_dir(test_dir, changed_dir):
                 matches.append(Correlation(
                     test_name=test.test_name,
                     test_file=test_file,
@@ -81,9 +82,20 @@ class Analyzer:
         return list(seen.values())
 
     @staticmethod
-    def _normalize(path: str) -> str:
-        """Strip leading ./ and lowercase for comparison."""
-        return path.lstrip("./").lower()
+    def _clean(path: str) -> str:
+        """Normalise to forward-slash lowercase, strip leading ./ or /."""
+        return path.replace("\\", "/").lower().lstrip("./")
+
+    @classmethod
+    def _same_file(cls, a: str, b: str) -> bool:
+        """Match paths that may differ in prefix (absolute CI path vs repo-relative)."""
+        ca, cb = cls._clean(a), cls._clean(b)
+        return ca == cb or ca.endswith("/" + cb) or cb.endswith("/" + ca)
+
+    @classmethod
+    def _same_dir(cls, a: str, b: str) -> bool:
+        ca, cb = cls._clean(a), cls._clean(b)
+        return bool(ca) and bool(cb) and (ca == cb or ca.endswith("/" + cb) or cb.endswith("/" + ca))
 
     # --- Phase 3: Flaky detection ---
 

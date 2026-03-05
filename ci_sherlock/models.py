@@ -42,6 +42,7 @@ class AnalysisResult(BaseModel):
     failed_results: list[TestResult]
     correlations: list[Correlation]
     unmatched_failures: list[TestResult]
+    changed_files: list[ChangedFile] = []
 
 
 # Phase 2 — populated by LLMEngine
