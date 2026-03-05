@@ -1,0 +1,203 @@
+{
+  "stats": {
+    "startTime": "2024-03-04T10:00:00.000Z",
+    "duration": 42000,
+    "expected": 3,
+    "skipped": 1,
+    "unexpected": 2,
+    "flaky": 1
+  },
+  "suites": [
+    {
+      "title": "tests/auth/login.spec.ts",
+      "file": "tests/auth/login.spec.ts",
+      "suites": [
+        {
+          "title": "Login",
+          "file": "tests/auth/login.spec.ts",
+          "specs": [
+            {
+              "title": "should redirect after successful auth",
+              "file": "tests/auth/login.spec.ts",
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "results": [
+                    {
+                      "status": "passed",
+                      "duration": 3200,
+                      "retry": 0,
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ]
+            },
+            {
+              "title": "should show error on invalid credentials",
+              "file": "tests/auth/login.spec.ts",
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "results": [
+                    {
+                      "status": "failed",
+                      "duration": 5100,
+                      "retry": 0,
+                      "error": {
+                        "message": "Error: Locator '.btn-primary' not found in page",
+                        "stack": "Error: Locator '.btn-primary' not found in page\n    at tests/auth/login.spec.ts:42:5"
+                      },
+                      "attachments": [
+                        {
+                          "name": "trace",
+                          "path": "test-results/login-trace.zip",
+                          "contentType": "application/zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "specs": []
+    },
+    {
+      "title": "tests/checkout/payment.spec.ts",
+      "file": "tests/checkout/payment.spec.ts",
+      "suites": [],
+      "specs": [
+        {
+          "title": "should process card payment",
+          "file": "tests/checkout/payment.spec.ts",
+          "tests": [
+            {
+              "timeout": 30000,
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "results": [
+                {
+                  "status": "failed",
+                  "duration": 8000,
+                  "retry": 0,
+                  "error": {
+                    "message": "Timeout 8000ms exceeded while waiting for element '#submit-btn'",
+                    "stack": "TimeoutError: Timeout 8000ms exceeded\n    at tests/checkout/payment.spec.ts:88:5"
+                  },
+                  "attachments": []
+                },
+                {
+                  "status": "passed",
+                  "duration": 4200,
+                  "retry": 1,
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ]
+        },
+        {
+          "title": "should display order summary",
+          "file": "tests/checkout/payment.spec.ts",
+          "tests": [
+            {
+              "timeout": 30000,
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 2100,
+                  "retry": 0,
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ]
+        },
+        {
+          "title": "should apply discount code",
+          "file": "tests/checkout/payment.spec.ts",
+          "tests": [
+            {
+              "timeout": 30000,
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "results": [
+                {
+                  "status": "failed",
+                  "duration": 6300,
+                  "retry": 0,
+                  "error": {
+                    "message": "Error: Expected 'SAVE10' discount to reduce total by 10% but got original price",
+                    "stack": "Error: Expected 'SAVE10' discount\n    at tests/checkout/payment.spec.ts:120:3"
+                  },
+                  "attachments": []
+                }
+              ],
+              "status": "unexpected"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "tests/search/search.spec.ts",
+      "file": "tests/search/search.spec.ts",
+      "suites": [],
+      "specs": [
+        {
+          "title": "should return results for valid query",
+          "file": "tests/search/search.spec.ts",
+          "tests": [
+            {
+              "timeout": 30000,
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "results": [
+                {
+                  "status": "passed",
+                  "duration": 1800,
+                  "retry": 0,
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ]
+        },
+        {
+          "title": "should filter by category",
+          "file": "tests/search/search.spec.ts",
+          "tests": [
+            {
+              "timeout": 30000,
+              "expectedStatus": "skipped",
+              "projectId": "chromium",
+              "results": [
+                {
+                  "status": "skipped",
+                  "duration": 0,
+                  "retry": 0,
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+name: CI Sherlock
+description: AI-powered CI failure investigation — correlates test failures with PR diffs and posts a root cause summary.
+author: ci-sherlock
+
+inputs:
+  github-token:
+    description: GitHub token for fetching PR diff and posting comments
+    required: true
+  openai-api-key:
+    description: OpenAI API key for LLM root cause analysis
+    required: false
+    default: ""
+  report-path:
+    description: Path to the Playwright JSON report
+    required: false
+    default: playwright-report.json
+  db-path:
+    description: Path to the SQLite history database
+    required: false
+    default: .ci-sherlock/history.db
+  model:
+    description: OpenAI model to use
+    required: false
+    default: gpt-4o
+
+runs:
+  using: composite
+  steps:
+    - name: Install CI Sherlock
+      shell: bash
+      run: pip install ci-sherlock --quiet
+
+    - name: Run analysis
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        SHERLOCK_REPORT_PATH: ${{ inputs.report-path }}
+        SHERLOCK_DB_PATH: ${{ inputs.db-path }}
+        SHERLOCK_MODEL: ${{ inputs.model }}
+      run: ci-sherlock analyze || true  # don't fail the action if analysis errors
