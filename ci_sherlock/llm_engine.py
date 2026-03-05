@@ -18,7 +18,7 @@ Rules:
   means ~30s per attempt, not a genuinely slow test. Do not flag retried tests as slow.
 
 Fix suggestion rules (suggested_fix, suggested_fix_file, suggested_fix_original):
-- Only populate these when confidence > 0.7 AND a direct_match correlation exists
+- Only populate these when confidence > 0.7 AND a direct_match OR diff_content_match correlation exists
 - suggested_fix: the replacement lines ONLY — no surrounding context, no diff markers
 - suggested_fix_file: must be exactly one of the filenames listed under "Changed files"
 - suggested_fix_original: VERBATIM copy of the broken line from the diff shown in this
@@ -100,7 +100,7 @@ class LLMEngine:
             )
 
         # Fix eligibility hint
-        has_direct = any(c.reason == "direct_match" for c in analysis.correlations)
+        has_direct = any(c.reason in ("direct_match", "diff_content_match") for c in analysis.correlations)
         if has_direct and analysis.changed_files:
             file_list = "\n".join(f"- {f.filename}" for f in analysis.changed_files[:20])
             sections.append(

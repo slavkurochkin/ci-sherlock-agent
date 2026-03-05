@@ -203,10 +203,10 @@ def analyze(
         except Exception as exc:
             console.print(f"  [dim]Check Run skipped: {exc}[/dim]")
 
-    # Inline review comments on direct_match correlations
+    # Inline review comments on direct_match / diff_content_match correlations
     if client and cfg.pr_number and head_sha and analysis.correlations:
         review_comments = []
-        direct = [c for c in analysis.correlations if c.reason == "direct_match"]
+        direct = [c for c in analysis.correlations if c.reason in ("direct_match", "diff_content_match")]
         for corr in direct[:5]:  # cap to avoid noise
             cf = next((f for f in analysis.changed_files if f.filename == corr.changed_file), None)
             patch = cf.patch if cf else None
