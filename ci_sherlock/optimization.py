@@ -1,3 +1,4 @@
+import glob as _glob
 from ci_sherlock.models import TestResult, OptimizationSuggestion
 
 # Thresholds
@@ -27,6 +28,30 @@ class OptimizationEngine:
             )
             for r in slow
         ]
+
+    def check_missing_cache(self, workflow_dir: str = ".github/workflows") -> list[OptimizationSuggestion]:
+        suggestions = []
+        patterns = [f"{workflow_dir}/*.yml", f"{workflow_dir}/*.yaml"]
+        workflow_files: list[str] = []
+        for pattern in patterns:
+            workflow_files.extend(_glob.glob(pattern))
+
+        for wf_path in workflow_files:
+            try:
+                content = open(wf_path).read()
+            except OSError:
+                continue
+            if "playwright install" in content and "actions/cache" not in content:
+                suggestions.append(OptimizationSuggestion(
+                    type="missing_cache",
+                    description=(
+                        f"`{wf_path}` runs `playwright install` but has no `actions/cache` step. "
+                        "Cache `~/.cache/ms-playwright` to speed up browser downloads."
+                    ),
+                    impact="medium",
+                    metadata={"workflow_file": wf_path},
+                ))
+        return suggestions
 
     def check_parallelization(self, results: list[TestResult]) -> list[OptimizationSuggestion]:
         # Only count passing tests for total duration — failed tests inflate via retries

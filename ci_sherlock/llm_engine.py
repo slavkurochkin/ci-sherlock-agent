@@ -1,8 +1,5 @@
 import logging
-import re
 from ci_sherlock.models import AnalysisResult, LLMInsight
-
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 logger = logging.getLogger(__name__)
 
@@ -113,11 +110,9 @@ class LLMEngine:
             lines.append(f"\n### {test.test_name}{retry_note}")
             lines.append(f"File: `{test.test_file}`")
             if test.error_message:
-                msg = _ANSI_RE.sub("", test.error_message)[:400]
-                lines.append(f"Error: {msg}")
+                lines.append(f"Error: {test.error_message[:400]}")
             if test.error_stack:
-                stack = _ANSI_RE.sub("", test.error_stack)[:400]
-                lines.append(f"Stack:\n```\n{stack}\n```")
+                lines.append(f"Stack:\n```\n{test.error_stack[:400]}\n```")
         if len(analysis.failed_results) > 10:
             lines.append(f"\n_…{len(analysis.failed_results) - 10} more failures omitted_")
         return "\n".join(lines)

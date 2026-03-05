@@ -1,3 +1,4 @@
+import os
 import sys
 import typer
 from rich.console import Console
@@ -14,12 +15,14 @@ def analyze(
     """Analyze test results, correlate with PR diff, post summary comment."""
     from ci_sherlock.config import Config
     from ci_sherlock.parsers.playwright import PlaywrightParser
+    from ci_sherlock.parsers.jest import JestParser
     from ci_sherlock.db import Database
     from ci_sherlock.github_client import GitHubClient
     from ci_sherlock.analyzer import Analyzer
-    from ci_sherlock.commenter import post_or_update_comment
+    from ci_sherlock.commenter import format_comment, post_or_update_comment
     from ci_sherlock.llm_engine import LLMEngine
     from ci_sherlock.optimization import OptimizationEngine
+    from ci_sherlock.notifier import notify_slack
 
     cfg = Config()
     report_path = report or cfg.sherlock_report_path
@@ -27,8 +30,17 @@ def analyze(
 
     console.print(f"[bold]CI Sherlock[/bold] — analyzing [cyan]{report_path}[/cyan]")
 
-    # Parse report
-    parser = PlaywrightParser()
+    # Detect parser
+    import json as _json
+    try:
+        with open(report_path) as _f:
+            _data = _json.load(_f)
+        parser = JestParser() if "testResults" in _data else PlaywrightParser()
+    except (FileNotFoundError, _json.JSONDecodeError):
+        parser = PlaywrightParser()
+
+    console.print(f"  Using [bold]{parser.name}[/bold] parser")
+
     try:
         results = parser.parse(report_path)
     except FileNotFoundError:
@@ -98,6 +110,7 @@ def analyze(
     # Optimization signals (Phase 3)
     opt_engine = OptimizationEngine()
     suggestions = opt_engine.analyze(results)
+    suggestions += opt_engine.check_missing_cache()
     if suggestions:
         console.print(f"  [yellow]{len(suggestions)}[/yellow] optimization suggestion(s)")
 
@@ -111,10 +124,24 @@ def analyze(
     console.print(f"  Results written to [cyan]{db_path}[/cyan]")
 
     # Post PR comment
+    comment_url = None
     if client and cfg.pr_number:
-        comment = post_or_update_comment(client, cfg.pr_number, analysis, insight, flaky_signals, suggestions)
-        if comment:
-            console.print(f"  PR comment posted: [link]{comment}[/link]")
+        comment_url = post_or_update_comment(client, cfg.pr_number, analysis, insight, flaky_signals, suggestions)
+        if comment_url:
+            console.print(f"  PR comment posted: [link]{comment_url}[/link]")
+
+    # GitHub Actions step summary
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        comment_body = format_comment(analysis, insight, flaky_signals, suggestions)
+        with open(summary_path, "a") as _sf:
+            _sf.write(comment_body)
+        console.print("  Step summary written to GITHUB_STEP_SUMMARY")
+
+    # Slack notification (only on failures)
+    if cfg.sherlock_slack_webhook and analysis.failed_tests > 0:
+        notify_slack(cfg.sherlock_slack_webhook, analysis, insight, pr_url=comment_url)
+        console.print("  Slack notification sent")
 
     # Exit with failure code if tests failed
     if analysis.failed_tests > 0:
@@ -136,8 +163,10 @@ def dashboard(
     env = os.environ.copy()
     env["SHERLOCK_DB_PATH"] = db_path
 
+    import importlib.util
+    app_path = importlib.util.find_spec("ci_sherlock.dashboard.app").origin
     subprocess.run(
-        ["streamlit", "run", "-m", "ci_sherlock.dashboard.app"],
+        ["streamlit", "run", app_path],
         env=env,
         check=True,
     )

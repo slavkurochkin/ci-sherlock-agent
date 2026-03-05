@@ -1,4 +1,6 @@
 import os
+import re
+import string
 from ci_sherlock.models import TestResult, ChangedFile, Correlation, AnalysisResult, FlakySignal
 
 
@@ -21,10 +23,8 @@ class Analyzer:
         correlations: list[Correlation] = []
         unmatched: list[TestResult] = []
 
-        changed_paths = [f.filename for f in changed_files]
-
         for test in failed:
-            matched = self._match(test, changed_paths)
+            matched = self._match(test, changed_files)
             if matched:
                 correlations.extend(matched)
             else:
@@ -47,13 +47,14 @@ class Analyzer:
             changed_files=changed_files,
         )
 
-    def _match(self, test: TestResult, changed_paths: list[str]) -> list[Correlation]:
+    def _match(self, test: TestResult, changed_files: list[ChangedFile]) -> list[Correlation]:
         matches: list[Correlation] = []
 
         test_file = test.test_file
         test_dir = os.path.dirname(test_file)
 
-        for changed in changed_paths:
+        for cf in changed_files:
+            changed = cf.filename
             changed_dir = os.path.dirname(changed)
 
             if self._same_file(test_file, changed):
@@ -72,6 +73,16 @@ class Analyzer:
                     score=0.6,
                     reason="same_directory",
                 ))
+            else:
+                diff_score = self.check_diff_content(test, cf)
+                if diff_score > 0:
+                    matches.append(Correlation(
+                        test_name=test.test_name,
+                        test_file=test_file,
+                        changed_file=changed,
+                        score=diff_score,
+                        reason="diff_content_match",
+                    ))
 
         # Deduplicate — keep highest score per changed file
         seen: dict[str, Correlation] = {}
@@ -80,6 +91,24 @@ class Analyzer:
                 seen[c.changed_file] = c
 
         return list(seen.values())
+
+    @staticmethod
+    def check_diff_content(test: TestResult, changed: ChangedFile) -> float:
+        """Return 0.9 if any meaningful token from the error message appears in the patch."""
+        if not changed.patch or not test.error_message:
+            return 0.0
+        # Extract tokens longer than 4 chars, strip punctuation
+        translator = str.maketrans("", "", string.punctuation)
+        tokens = [
+            w.translate(translator)
+            for w in re.split(r"\s+", test.error_message)
+            if len(w) > 4
+        ]
+        tokens = [t for t in tokens if len(t) > 4]
+        if not tokens:
+            return 0.0
+        patch = changed.patch
+        return 0.9 if any(t in patch for t in tokens) else 0.0
 
     @staticmethod
     def _clean(path: str) -> str:

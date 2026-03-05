@@ -188,6 +188,66 @@ def test_absolute_path_matches_relative(analyzer):
     assert analysis.correlations[0].reason == "direct_match"
 
 
+def test_diff_content_match_promotes_score(analyzer):
+    """Error message token found in patch → score 0.9, reason diff_content_match."""
+    test = TestResult(
+        test_name="should checkout",
+        test_file="tests/ui/button.spec.ts",
+        status="failed",
+        duration_ms=1000,
+        error_message="addToCart function returned undefined",
+    )
+    changed = ChangedFile(
+        filename="src/api/cart.ts",
+        status="modified",
+        additions=3,
+        deletions=1,
+        patch="@@ -1,3 +1,4 @@\n-function addToCart(item) {\n+function addToCart(item, qty) {\n",
+    )
+    correlations = analyzer._match(test, [changed])
+    assert len(correlations) == 1
+    assert correlations[0].score == 0.9
+    assert correlations[0].reason == "diff_content_match"
+
+
+def test_diff_content_no_match(analyzer):
+    test = TestResult(
+        test_name="should load page",
+        test_file="tests/ui/page.spec.ts",
+        status="failed",
+        duration_ms=500,
+        error_message="Timeout waiting element",
+    )
+    changed = ChangedFile(
+        filename="src/api/users.ts",
+        status="modified",
+        additions=2,
+        deletions=0,
+        patch="@@ -1 +1 @@\n+const x = 1;\n",
+    )
+    correlations = analyzer._match(test, [changed])
+    assert len(correlations) == 0
+
+
+def test_diff_content_match_with_no_patch(analyzer):
+    test = TestResult(
+        test_name="should submit form",
+        test_file="tests/forms/submit.spec.ts",
+        status="failed",
+        duration_ms=800,
+        error_message="submitButton element not found",
+    )
+    changed = ChangedFile(
+        filename="src/forms/Submit.tsx",
+        status="modified",
+        additions=5,
+        deletions=2,
+        patch=None,
+    )
+    result = analyzer.check_diff_content(test, changed)
+    assert result == 0.0
+
+
 def test_changed_files_stored_on_result(analyzer):
     results = [make_test("should work", "tests/foo.spec.ts", "passed")]
     changed = [make_changed("src/App.tsx")]

@@ -1,7 +1,10 @@
 import json
+import re
 from typing import Any
 from ci_sherlock.parsers.base import BaseParser
 from ci_sherlock.models import TestResult
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 class PlaywrightParser(BaseParser):
@@ -56,8 +59,10 @@ class PlaywrightParser(BaseParser):
             for result in test_results:
                 if result.get("status") == "failed" or result.get("status") == "timedOut":
                     err = result.get("error", {})
-                    error_message = err.get("message")
-                    error_stack = err.get("stack")
+                    raw_msg = err.get("message")
+                    raw_stack = err.get("stack")
+                    error_message = _ANSI_RE.sub("", raw_msg) if raw_msg else None
+                    error_stack = _ANSI_RE.sub("", raw_stack) if raw_stack else None
                     break
 
             # Trace from attachments (any attempt)

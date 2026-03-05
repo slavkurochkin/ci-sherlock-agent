@@ -26,7 +26,7 @@ class Correlation(BaseModel):
     test_file: str
     changed_file: str
     score: float
-    reason: Literal["direct_match", "same_directory", "imported_module"]
+    reason: Literal["direct_match", "same_directory", "imported_module", "diff_content_match"]
 
 
 class AnalysisResult(BaseModel):

@@ -103,3 +103,41 @@ def test_analyze_returns_all_suggestions(engine):
 
 def test_analyze_empty_results(engine):
     assert engine.analyze([]) == []
+
+
+# --- check_missing_cache ---
+
+def test_missing_cache_flagged(engine, tmp_path):
+    wf = tmp_path / "test.yml"
+    wf.write_text("steps:\n  - run: npx playwright install\n")
+    suggestions = engine.check_missing_cache(workflow_dir=str(tmp_path))
+    assert len(suggestions) == 1
+    assert suggestions[0].type == "missing_cache"
+    assert suggestions[0].impact == "medium"
+    assert "actions/cache" in suggestions[0].description
+
+
+def test_missing_cache_not_flagged_when_cache_present(engine, tmp_path):
+    wf = tmp_path / "test.yml"
+    wf.write_text("steps:\n  - uses: actions/cache\n  - run: npx playwright install\n")
+    suggestions = engine.check_missing_cache(workflow_dir=str(tmp_path))
+    assert len(suggestions) == 0
+
+
+def test_missing_cache_not_flagged_when_no_playwright(engine, tmp_path):
+    wf = tmp_path / "test.yml"
+    wf.write_text("steps:\n  - run: npm test\n")
+    suggestions = engine.check_missing_cache(workflow_dir=str(tmp_path))
+    assert len(suggestions) == 0
+
+
+def test_missing_cache_empty_dir(engine, tmp_path):
+    suggestions = engine.check_missing_cache(workflow_dir=str(tmp_path))
+    assert suggestions == []
+
+
+def test_missing_cache_detects_yaml_extension(engine, tmp_path):
+    wf = tmp_path / "ci.yaml"
+    wf.write_text("steps:\n  - run: playwright install\n")
+    suggestions = engine.check_missing_cache(workflow_dir=str(tmp_path))
+    assert len(suggestions) == 1

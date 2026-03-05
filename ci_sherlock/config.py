@@ -19,6 +19,7 @@ class Config(BaseSettings):
 
     # Optional override — inferred from GITHUB_REF if not set
     sherlock_pr_number: int | None = None
+    sherlock_slack_webhook: str | None = None
 
     @property
     def pr_number(self) -> int | None:

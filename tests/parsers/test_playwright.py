@@ -86,3 +86,19 @@ def test_invalid_json_raises(parser, tmp_path):
     bad.write_text('{"not": "a playwright report"}')
     with pytest.raises(ValueError):
         parser.parse(str(bad))
+
+
+def test_ansi_codes_stripped(parser, tmp_path):
+    report = tmp_path / "report.json"
+    report.write_text(
+        '{"suites": [{"file": "tests/foo.spec.ts", "specs": [{"title": "t", "tests": [{'
+        '"status": "unexpected", "results": [{"status": "failed", "duration": 100, '
+        '"error": {"message": "\\u001b[31mExpected true\\u001b[0m", '
+        '"stack": "\\u001b[33mat line 1\\u001b[0m"}, "attachments": []}]}]}], "suites": []}]}'
+    )
+    results = parser.parse(str(report))
+    assert len(results) == 1
+    assert results[0].error_message == "Expected true"
+    assert results[0].error_stack == "at line 1"
+    assert "\x1b[" not in (results[0].error_message or "")
+    assert "\x1b[" not in (results[0].error_stack or "")

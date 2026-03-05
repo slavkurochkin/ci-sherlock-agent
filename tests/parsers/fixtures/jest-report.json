@@ -1,0 +1,49 @@
+{
+  "numFailedTestSuites": 1,
+  "numFailedTests": 2,
+  "numPassedTestSuites": 1,
+  "numPassedTests": 1,
+  "numPendingTests": 1,
+  "testResults": [
+    {
+      "testFilePath": "/home/runner/work/todo-app/todo-app/src/__tests__/auth.test.js",
+      "status": "failed",
+      "assertionResults": [
+        {
+          "title": "should login with valid credentials",
+          "status": "passed",
+          "duration": 123,
+          "failureMessages": [],
+          "ancestorTitles": ["Auth", "login"]
+        },
+        {
+          "title": "should reject invalid password",
+          "status": "failed",
+          "duration": 456,
+          "failureMessages": ["\u001b[31mExpect(received).toBe(expected)\u001b[0m\n\nExpected: 401\nReceived: 200"],
+          "ancestorTitles": ["Auth", "login"]
+        },
+        {
+          "title": "should handle network errors",
+          "status": "pending",
+          "duration": null,
+          "failureMessages": [],
+          "ancestorTitles": ["Auth"]
+        }
+      ]
+    },
+    {
+      "testFilePath": "/home/runner/work/todo-app/todo-app/src/__tests__/cart.test.js",
+      "status": "failed",
+      "assertionResults": [
+        {
+          "title": "should add item to cart",
+          "status": "failed",
+          "duration": 789,
+          "failureMessages": ["TypeError: Cannot read properties of undefined (reading 'addItem')"],
+          "ancestorTitles": ["Cart"]
+        }
+      ]
+    }
+  ]
+}

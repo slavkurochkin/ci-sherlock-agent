@@ -149,11 +149,41 @@ Add a real or synthetic `tests/fixtures/jest-report.json` from a local Jest run.
 
 | Framework | Parser | Report flag | Status |
 |---|---|---|---|
-| Playwright | `PlaywrightParser` | `--reporter json` | Phase 1 |
-| Jest | `JestParser` | `--json --outputFile` | Phase 4+ |
-| Vitest | `VitestParser` | `--reporter json` | Phase 4+ |
-| Cypress | `CypressParser` | mochawesome JSON | Phase 4+ |
-| pytest | `PytestParser` | `--json-report` | Phase 4+ |
+| Playwright | `PlaywrightParser` | `--reporter json` | Shipped |
+| Jest / Vitest | `JestParser` | `--json --outputFile` | Shipped |
+| Cypress | `CypressParser` | mochawesome JSON | Future |
+| pytest | `PytestParser` | `--json-report` | Future |
+
+### Auto-detection
+
+The CLI auto-detects the parser based on the JSON structure:
+
+```python
+# ci_sherlock/cli.py — _detect_parser logic
+if "testResults" in data:
+    return JestParser()   # Jest / Vitest JSON format
+return PlaywrightParser()  # default
+```
+
+You can also pass a Jest report directly:
+
+```bash
+ci-sherlock analyze --report jest-results.json
+```
+
+### Jest / Vitest setup
+
+Generate the JSON report with:
+
+```bash
+# Jest
+jest --json --outputFile jest-results.json
+
+# Vitest
+vitest run --reporter=json --outputFile=vitest-results.json
+```
+
+The JSON root must contain a `"testResults"` key (the Jest `--json` default). ANSI escape codes in failure messages are stripped automatically.
 
 ---
 

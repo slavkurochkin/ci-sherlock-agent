@@ -290,3 +290,34 @@ CI Sherlock only posts PR comments when a PR number is detected. Push events to 
 
 **LLM section missing from comment**
 `OPENAI_API_KEY` is not set or is invalid. The rest of the analysis (correlations, flaky detection, optimization signals) still runs and is posted.
+
+---
+
+## Optional — Slack notifications
+
+Add `SHERLOCK_SLACK_WEBHOOK` to post a concise failure summary to a Slack channel.
+
+1. Create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) for your workspace.
+2. Add the URL as a GitHub secret (`SHERLOCK_SLACK_WEBHOOK`).
+3. Pass it to the workflow step:
+
+```yaml
+      - name: Run CI Sherlock
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SHERLOCK_SLACK_WEBHOOK: ${{ secrets.SHERLOCK_SLACK_WEBHOOK }}
+        run: |
+          pip install ci-sherlock --quiet
+          ci-sherlock analyze
+```
+
+CI Sherlock only posts to Slack when there are **failing tests** — green builds are silent.
+
+---
+
+## Optional — GitHub Actions step summary
+
+CI Sherlock automatically writes the full analysis as a [Job Summary](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#adding-a-job-summary) when the `GITHUB_STEP_SUMMARY` environment variable is set.
+
+GitHub Actions sets this variable automatically on every runner — no configuration needed. The analysis appears in the **Summary** tab of your workflow run.

@@ -40,33 +40,65 @@ def format_comment(
 
     # Failures section
     if analysis.failed_results:
-        lines += ["### Failures", ""]
+        failure_lines = []
         for test in analysis.failed_results[:10]:
-            lines.append(f"- **{test.test_name}** `{test.test_file}`")
+            failure_lines.append(f"- **{test.test_name}** `{test.test_file}`")
             if test.error_message:
                 msg = test.error_message[:200].replace("\n", " ")
-                lines.append(f"  ```\n  {msg}\n  ```")
+                failure_lines.append(f"  ```\n  {msg}\n  ```")
         if len(analysis.failed_results) > 10:
-            lines.append(f"- _…and {len(analysis.failed_results) - 10} more_")
-        lines.append("")
+            failure_lines.append(f"- _…and {len(analysis.failed_results) - 10} more_")
+
+        n_fail = len(analysis.failed_results)
+        if n_fail > 3:
+            lines += [
+                f"<details>",
+                f"<summary>Failures ({n_fail} tests)</summary>",
+                "",
+                *failure_lines,
+                "",
+                "</details>",
+                "",
+            ]
+        else:
+            lines += ["### Failures", ""] + failure_lines + [""]
 
     # Correlation section
     if analysis.correlations:
-        lines += ["### Failure → Diff Correlation", ""]
-        lines.append("| Test | Changed file | Signal | Score |")
-        lines.append("|---|---|---|---|")
-        for c in sorted(analysis.correlations, key=lambda x: -x.score)[:10]:
-            lines.append(
+        sorted_corr = sorted(analysis.correlations, key=lambda x: -x.score)[:10]
+        corr_lines = [
+            "| Test | Changed file | Signal | Score |",
+            "|---|---|---|---|",
+            *[
                 f"| `{c.test_name}` | `{c.changed_file}` | {c.reason} | {c.score:.1f} |"
-            )
-        lines.append("")
+                for c in sorted_corr
+            ],
+        ]
+        n_corr = len(analysis.correlations)
+        if n_corr > 3:
+            lines += [
+                "<details>",
+                f"<summary>Failure → Diff Correlation ({n_corr} signals)</summary>",
+                "",
+                *corr_lines,
+                "",
+                "</details>",
+                "",
+            ]
+        else:
+            lines += ["### Failure → Diff Correlation", ""] + corr_lines + [""]
 
     if analysis.unmatched_failures:
+        unmatched_lines = [f"- `{t.test_name}` ({t.test_file})" for t in analysis.unmatched_failures[:5]]
         lines += [
-            "### Unmatched Failures",
+            "<details>",
+            "<summary>Unmatched Failures</summary>",
+            "",
             "_These failures have no correlation to changed files — possibly environmental or flaky._",
             "",
-            *[f"- `{t.test_name}` ({t.test_file})" for t in analysis.unmatched_failures[:5]],
+            *unmatched_lines,
+            "",
+            "</details>",
             "",
         ]
 
@@ -81,11 +113,19 @@ def format_comment(
     # Optimization suggestions (Phase 3)
     if optimization_suggestions:
         impact_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-        lines += ["### CI Optimization", ""]
+        opt_lines = []
         for s in optimization_suggestions:
             icon = impact_icon.get(s.impact, "•")
-            lines.append(f"- {icon} {s.description}")
-        lines.append("")
+            opt_lines.append(f"- {icon} {s.description}")
+        lines += [
+            "<details>",
+            f"<summary>CI Optimization ({len(optimization_suggestions)} suggestion{'s' if len(optimization_suggestions) != 1 else ''})</summary>",
+            "",
+            *opt_lines,
+            "",
+            "</details>",
+            "",
+        ]
 
     lines += [
         "---",
