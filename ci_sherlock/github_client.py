@@ -89,6 +89,16 @@ class GitHubClient:
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
+    def get_pr_head_sha(self, pr_number: int) -> str | None:
+        """Return the HEAD commit SHA of the PR branch (not the merge commit)."""
+        resp = httpx.get(
+            f"{GITHUB_API}/repos/{self._repo}/pulls/{pr_number}",
+            headers=self._headers,
+        )
+        if not resp.is_success:
+            return None
+        return resp.json().get("head", {}).get("sha")
+
     def get_pr_files(self, pr_number: int) -> list[ChangedFile]:
         files: list[ChangedFile] = []
         page = 1

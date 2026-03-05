@@ -36,6 +36,11 @@ def analyze(
 
     console.print(f"[bold]CI Sherlock[/bold] — analyzing {len(report_paths)} report(s)")
 
+    # head_sha: PR branch HEAD (not the synthetic merge commit GitHub Actions exposes
+    # as GITHUB_SHA for pull_request events). Needed for review comments & check runs
+    # so GitHub can anchor them to the correct commit and show "Commit suggestion".
+    head_sha: str | None = cfg.github_sha
+
     # Parse + merge all reports
     all_results = []
     for path in report_paths:
@@ -83,6 +88,9 @@ def analyze(
         client = GitHubClient(token=cfg.github_token, repo=cfg.repo)
         changed_files = client.get_pr_files(cfg.pr_number)
         console.print(f"  Fetched [bold]{len(changed_files)}[/bold] changed files from PR #{cfg.pr_number}")
+        fetched_head = client.get_pr_head_sha(cfg.pr_number)
+        if fetched_head:
+            head_sha = fetched_head
     else:
         console.print("  [yellow]No GitHub token/repo/PR — skipping diff fetch and PR comment[/yellow]")
 
@@ -172,7 +180,7 @@ def analyze(
     console.print(f"  Results written to [cyan]{db_path}[/cyan]")
 
     # GitHub Checks API
-    if client and cfg.github_sha:
+    if client and head_sha:
         conclusion = "failure" if analysis.failed_tests > 0 else "success"
         check_title = (
             f"{analysis.failed_tests} test(s) failed"
@@ -186,7 +194,7 @@ def analyze(
             check_summary += f"\n\n**Root cause:** {insight.root_cause}"
         try:
             client.create_check_run(
-                head_sha=cfg.github_sha,
+                head_sha=head_sha,
                 conclusion=conclusion,
                 title=check_title,
                 summary=check_summary,
@@ -196,7 +204,7 @@ def analyze(
             console.print(f"  [dim]Check Run skipped: {exc}[/dim]")
 
     # Inline review comments on direct_match correlations
-    if client and cfg.pr_number and cfg.github_sha and analysis.correlations:
+    if client and cfg.pr_number and head_sha and analysis.correlations:
         review_comments = []
         direct = [c for c in analysis.correlations if c.reason == "direct_match"]
         for corr in direct[:5]:  # cap to avoid noise
@@ -235,7 +243,7 @@ def analyze(
 
         if review_comments:
             try:
-                client.create_pull_review(cfg.pr_number, cfg.github_sha, review_comments)
+                client.create_pull_review(cfg.pr_number, head_sha, review_comments)
                 fix_posted = any(
                     insight and insight.suggested_fix and insight.suggested_fix_file == c["path"]
                     for c in review_comments
